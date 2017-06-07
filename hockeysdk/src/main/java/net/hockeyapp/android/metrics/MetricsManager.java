@@ -23,6 +23,7 @@ import net.hockeyapp.android.utils.HockeyLog;
 import net.hockeyapp.android.utils.Util;
 
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
@@ -231,7 +232,6 @@ public class MetricsManager {
                 if (!result.mSessionTrackingDisabled) {
                     setSessionTrackingDisabled(false);
                 }
-
             }
 
             PrivateEventManager.addEventListener(new PrivateEventManager.HockeyEventListener() {
@@ -314,6 +314,11 @@ public class MetricsManager {
             mTelemetryLifecycleCallbacks = new TelemetryLifecycleCallbacks();
         }
         getApplication().registerActivityLifecycleCallbacks(mTelemetryLifecycleCallbacks);
+
+        if (getRunningActivity() != null) {
+            HockeyLog.debug(TAG, "Some activity already running. Force start session.");
+            updateSession();
+        }
     }
 
     @TargetApi(Build.VERSION_CODES.ICE_CREAM_SANDWICH)
@@ -350,6 +355,35 @@ public class MetricsManager {
         }
 
         return application;
+    }
+
+    /**
+     * Get the current running activity. This should works since Android 4.3.
+     * This way works without additional permissions.
+     *
+     * @return the current running activity
+     */
+    private static Activity getRunningActivity() {
+        try {
+            Class activityThreadClass = Class.forName("android.app.ActivityThread");
+            Object activityThread = activityThreadClass.getMethod("currentActivityThread").invoke(null);
+            Field activitiesField = activityThreadClass.getDeclaredField("mActivities");
+            activitiesField.setAccessible(true);
+            Map activities = (Map) activitiesField.get(activityThread);
+            for (Object activityRecord : activities.values()) {
+                Class activityRecordClass = activityRecord.getClass();
+                Field pausedField = activityRecordClass.getDeclaredField("paused");
+                pausedField.setAccessible(true);
+                if (!pausedField.getBoolean(activityRecord)) {
+                    Field activityField = activityRecordClass.getDeclaredField("activity");
+                    activityField.setAccessible(true);
+                    return (Activity) activityField.get(activityRecord);
+                }
+            }
+            return null;
+        } catch (Throwable e) {
+            return null;
+        }
     }
 
     /**
@@ -411,7 +445,7 @@ public class MetricsManager {
         }
     }
 
-    protected void renewSession() {
+    private void renewSession() {
         String sessionId = UUID.randomUUID().toString();
         sTelemetryContext.renewSessionContext(sessionId);
         trackSessionState(SessionState.START);

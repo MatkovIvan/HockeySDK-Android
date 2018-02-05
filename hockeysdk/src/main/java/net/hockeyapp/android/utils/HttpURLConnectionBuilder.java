@@ -30,18 +30,20 @@ import java.util.Map;
 public class HttpURLConnectionBuilder {
 
     private static final int DEFAULT_TIMEOUT = 2 * 60 * 1000;
+    private static final int MAX_REDIRECTS = 6;
     public static final String DEFAULT_CHARSET = "UTF-8";
     public static final int FORM_FIELD_LIMIT = 4 * 1024 * 1024;
     public static final int FIELDS_LIMIT = 25;
 
     private final String mUrlString;
+    private final Map<String, String> mHeaders;
 
     private String mRequestMethod;
     private String mRequestBody;
     private SimpleMultipartEntity mMultipartEntity;
     private int mTimeout = DEFAULT_TIMEOUT;
+    private boolean mFollowRedirects = false;
 
-    private final Map<String, String> mHeaders;
 
     public HttpURLConnectionBuilder(String urlString) {
         mUrlString = urlString;
@@ -56,6 +58,32 @@ public class HttpURLConnectionBuilder {
 
     public HttpURLConnectionBuilder setRequestBody(String requestBody) {
         mRequestBody = requestBody;
+        return this;
+    }
+
+    public HttpURLConnectionBuilder setTimeout(int timeout) {
+        if (timeout < 0) {
+            throw new IllegalArgumentException("Timeout has to be positive.");
+        }
+        mTimeout = timeout;
+        return this;
+    }
+
+    public HttpURLConnectionBuilder setFollowRedirects(boolean followRedirects) {
+        mFollowRedirects = followRedirects;
+        return this;
+    }
+
+    public HttpURLConnectionBuilder setHeader(String name, String value) {
+        mHeaders.put(name, value);
+        return this;
+    }
+
+    public HttpURLConnectionBuilder setBasicAuthorization(String username, String password) {
+        String authString = "Basic " + net.hockeyapp.android.utils.Base64.encodeToString(
+                (username + ":" + password).getBytes(), android.util.Base64.NO_WRAP);
+
+        setHeader("Authorization", authString);
         return this;
     }
 
@@ -112,31 +140,51 @@ public class HttpURLConnectionBuilder {
         return this;
     }
 
-    public HttpURLConnectionBuilder setTimeout(int timeout) {
-        if (timeout < 0) {
-            throw new IllegalArgumentException("Timeout has to be positive.");
-        }
-        mTimeout = timeout;
-        return this;
-    }
-
-    public HttpURLConnectionBuilder setHeader(String name, String value) {
-        mHeaders.put(name, value);
-        return this;
-    }
-
-    public HttpURLConnectionBuilder setBasicAuthorization(String username, String password) {
-        String authString = "Basic " + net.hockeyapp.android.utils.Base64.encodeToString(
-                (username + ":" + password).getBytes(), android.util.Base64.NO_WRAP);
-
-        setHeader("Authorization", authString);
-        return this;
-    }
-
     public HttpURLConnection build() throws IOException {
-        HttpURLConnection connection;
         URL url = new URL(mUrlString);
-        connection = (HttpURLConnection) url.openConnection();
+        return createConnection(url, MAX_REDIRECTS);
+    }
+
+    /**
+     * Recursive method for resolving redirects.
+     *
+     * @param url                a URL
+     * @param remainingRedirects loop counter
+     * @return instance of URLConnection
+     * @throws IOException if connection fails
+     */
+    private HttpURLConnection createConnection(URL url, int remainingRedirects) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        setConnectionProperties(connection);
+
+        if (!mFollowRedirects) {
+            return connection;
+        }
+
+        int code = connection.getResponseCode();
+        if (code == HttpURLConnection.HTTP_MOVED_PERM ||
+            code == HttpURLConnection.HTTP_MOVED_TEMP ||
+            code == HttpURLConnection.HTTP_SEE_OTHER) {
+
+            if (remainingRedirects == 0) {
+                // Stop redirecting.
+                return connection;
+            }
+
+            URL movedUrl = new URL(connection.getHeaderField("Location"));
+            if (!url.getProtocol().equals(movedUrl.getProtocol())) {
+                // HttpURLConnection doesn't handle redirects across schemes, so handle it manually, see
+                // http://code.google.com/p/android/issues/detail?id=41651
+                connection.disconnect();
+                return createConnection(movedUrl, --remainingRedirects); // Recursion
+            }
+        }
+        return connection;
+    }
+
+    private void setConnectionProperties(HttpURLConnection connection) throws IOException {
+        connection.setInstanceFollowRedirects(mFollowRedirects);
+        connection.setUseCaches(false);
 
         connection.setConnectTimeout(mTimeout);
         connection.setReadTimeout(mTimeout);
@@ -164,8 +212,6 @@ public class HttpURLConnectionBuilder {
             connection.setRequestProperty("Content-Length", String.valueOf(mMultipartEntity.getContentLength()));
             mMultipartEntity.writeTo(connection.getOutputStream());
         }
-
-        return connection;
     }
 
     private static String getFormString(Map<String, String> params, String charset) throws UnsupportedEncodingException {
@@ -178,5 +224,4 @@ public class HttpURLConnectionBuilder {
         }
         return TextUtils.join("&", protoList);
     }
-
 }

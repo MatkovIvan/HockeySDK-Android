@@ -268,9 +268,6 @@ public class UpdateFragment extends DialogFragment implements OnClickListener, U
         }
 
         startDownloadTask();
-        if (getShowsDialog()) {
-            dismiss();
-        }
     }
 
     /**

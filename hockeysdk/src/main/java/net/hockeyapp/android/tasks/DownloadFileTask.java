@@ -244,6 +244,6 @@ public class DownloadFileTask extends AsyncTask<Void, Integer, Long> {
     }
 
     protected String getURLString() {
-        return mUrlString + "&type=apk";
+        return mUrlString;
     }
 }

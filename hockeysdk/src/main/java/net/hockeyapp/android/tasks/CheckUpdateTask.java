@@ -101,7 +101,7 @@ public class CheckUpdateTask extends AsyncTask<Void, String, JSONArray> {
         }
 
         // It must be called in background, since it depends on shared preferences
-        apkUrlString = getURLString(context, "apk");
+        apkUrlString = getURLString(context, "apk") + "&type=apk";
 
         try {
             int versionCode = getVersionCode();

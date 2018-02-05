@@ -343,11 +343,9 @@ public class SendFeedbackTask extends ConnectionTask<Void, Void, HashMap<String,
 
             urlConnection = new HttpURLConnectionBuilder(sb.toString())
                     .build();
-
-            result.put("type", "fetch");
-
             urlConnection.connect();
 
+            result.put("type", "fetch");
             result.put("status", String.valueOf(urlConnection.getResponseCode()));
             result.put("response", getStringFromConnection(urlConnection));
         } catch (IOException e) {

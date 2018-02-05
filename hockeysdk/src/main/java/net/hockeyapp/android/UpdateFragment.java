@@ -1,6 +1,7 @@
 package net.hockeyapp.android;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
@@ -9,9 +10,11 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.format.Formatter;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -23,14 +26,16 @@ import android.widget.TextView;
 
 import net.hockeyapp.android.listeners.DownloadFileListener;
 import net.hockeyapp.android.tasks.DownloadFileTask;
-import net.hockeyapp.android.tasks.GetFileSizeTask;
 import net.hockeyapp.android.utils.AsyncTaskUtils;
+import net.hockeyapp.android.utils.HockeyLog;
+import net.hockeyapp.android.utils.HttpURLConnectionBuilder;
 import net.hockeyapp.android.utils.PermissionsUtil;
 import net.hockeyapp.android.utils.Util;
 import net.hockeyapp.android.utils.VersionHelper;
 
+import java.io.IOException;
+import java.net.URLConnection;
 import java.util.ArrayList;
-import java.util.Locale;
 
 /**
  * <h3>Description</h3>
@@ -128,6 +133,7 @@ public class UpdateFragment extends DialogFragment implements OnClickListener, U
      *
      * @return The fragment's root view.
      */
+    @SuppressLint("StaticFieldLeak")
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = getLayoutView();
@@ -146,19 +152,31 @@ public class UpdateFragment extends DialogFragment implements OnClickListener, U
         String appSizeString = getString(R.string.hockeyapp_update_unknown_size);
         long appSize = versionHelper.getFileSizeBytes();
         if (appSize >= 0L) {
-            appSizeString = String.format(Locale.US, "%.2f", appSize / (1024.0f * 1024.0f)) + " MB";
+            appSizeString = Formatter.formatFileSize(getActivity(), appSize);
         } else {
-            GetFileSizeTask task = new GetFileSizeTask(getActivity(), mUrlString, new DownloadFileListener() {
+            AsyncTaskUtils.execute(new AsyncTask<Void, Void, Integer>() {
                 @Override
-                public void downloadSuccessful(DownloadFileTask task) {
-                    if (task instanceof GetFileSizeTask) {
-                        long appSize = ((GetFileSizeTask) task).getSize();
-                        String appSizeString = String.format(Locale.US, "%.2f", appSize / (1024.0f * 1024.0f)) + " MB";
+                protected Integer doInBackground(Void... args) {
+                    try {
+                        URLConnection connection = new HttpURLConnectionBuilder(mUrlString)
+                                .setFollowRedirects(true)
+                                .build();
+                        return connection.getContentLength();
+                    } catch (IOException e) {
+                        HockeyLog.error("Failed to get size " + mUrlString, e);
+                        return -1;
+                    }
+                }
+
+                @Override
+                protected void onPostExecute(Integer result) {
+                    long appSize = result;
+                    if (appSize >= 0L) {
+                        String appSizeString = Formatter.formatFileSize(getActivity(), appSize);
                         versionLabel.setText(getString(R.string.hockeyapp_update_version_details_label, versionString, fileDate, appSizeString));
                     }
                 }
             });
-            AsyncTaskUtils.execute(task);
         }
         versionLabel.setText(getString(R.string.hockeyapp_update_version_details_label, versionString, fileDate, appSizeString));
 

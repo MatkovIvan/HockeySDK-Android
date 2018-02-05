@@ -5,14 +5,18 @@ import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
+import android.app.DownloadManager;
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.StrictMode;
 import android.provider.Settings;
 import android.text.format.Formatter;
 import android.view.LayoutInflater;
@@ -24,9 +28,8 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import net.hockeyapp.android.listeners.DownloadFileListener;
-import net.hockeyapp.android.tasks.DownloadFileTask;
 import net.hockeyapp.android.utils.AsyncTaskUtils;
+import net.hockeyapp.android.utils.DownloadFileHelper;
 import net.hockeyapp.android.utils.HockeyLog;
 import net.hockeyapp.android.utils.HttpURLConnectionBuilder;
 import net.hockeyapp.android.utils.PermissionsUtil;
@@ -36,6 +39,7 @@ import net.hockeyapp.android.utils.VersionHelper;
 import java.io.IOException;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.NoSuchElementException;
 
 /**
  * <h3>Description</h3>
@@ -271,24 +275,6 @@ public class UpdateFragment extends DialogFragment implements OnClickListener, U
     }
 
     /**
-     * Starts the download task and sets the listener for a successful
-     * download, a failed download, and configuration strings.
-     */
-    protected void startDownloadTask() {
-        AsyncTaskUtils.execute(new DownloadFileTask(getActivity(), mUrlString, new DownloadFileListener() {
-            public void downloadFailed(DownloadFileTask task, Boolean userWantsRetry) {
-                if (userWantsRetry) {
-                    startDownloadTask();
-                }
-            }
-
-            public void downloadSuccessful(DownloadFileTask task) {
-                // Do nothing as the fragment is already dismissed
-            }
-        }));
-    }
-
-    /**
      * Creates and returns a new instance of the update view.
      *
      * @return Update view
@@ -298,4 +284,93 @@ public class UpdateFragment extends DialogFragment implements OnClickListener, U
         LayoutInflater.from(getActivity()).inflate(R.layout.hockeyapp_fragment_update, layout);
         return layout;
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    private long mDownloadId;
+    private ProgressDialog mProgressDialog;
+
+    /**
+     * Starts the download task and sets the listener for a successful
+     * download, a failed download, and configuration strings.
+     */
+    protected void startDownloadTask() {
+        DownloadFileHelper.download(getActivity(), mUrlString, new DownloadFileHelper.Listener() {
+            @Override
+            public void onStarted(long downloadId) {
+
+            }
+
+            @Override
+            public void onProgress(long current, long total) {
+                updateDownloadProgress(current, total);
+            }
+
+            @Override
+            public void onSuccess(Uri localUri) {
+                installApk(localUri);
+            }
+
+            @Override
+            public void onFail(String error) {
+
+            }
+        });
+    }
+
+    private void updateDownloadProgress(long current, long total) {
+        if (mProgressDialog == null) {
+            mProgressDialog = new ProgressDialog(getActivity());
+            mProgressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+            mProgressDialog.setMessage(getString(R.string.hockeyapp_update_loading));
+            mProgressDialog.setCancelable(false);
+            mProgressDialog.show();
+        }
+        mProgressDialog.setMax((int) total);
+        mProgressDialog.setProgress((int) current);
+    }
+
+    private void installApk(Uri localUri) {
+        Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+        intent.setDataAndType(localUri, "application/vnd.android.package-archive");
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        StrictMode.VmPolicy oldVmPolicy = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            oldVmPolicy = StrictMode.getVmPolicy();
+            StrictMode.VmPolicy policy = new StrictMode.VmPolicy.Builder()
+                    .penaltyLog()
+                    .build();
+            StrictMode.setVmPolicy(policy);
+        }
+        getActivity().startActivity(intent);
+        if (oldVmPolicy != null) {
+            StrictMode.setVmPolicy(oldVmPolicy);
+        }
+    }
+
+
+
+
+
+
+
+
+
+
 }

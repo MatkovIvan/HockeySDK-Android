@@ -11,6 +11,7 @@ import net.hockeyapp.android.Constants;
 import net.hockeyapp.android.objects.FeedbackAttachment;
 import net.hockeyapp.android.utils.AsyncTaskUtils;
 import net.hockeyapp.android.utils.HockeyLog;
+import net.hockeyapp.android.utils.HttpURLConnectionBuilder;
 import net.hockeyapp.android.utils.ImageUtils;
 import net.hockeyapp.android.views.AttachmentView;
 
@@ -228,7 +229,9 @@ public class AttachmentDownloader {
             OutputStream output = null;
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) createConnection(new URL(url));
+                connection = new HttpURLConnectionBuilder(url)
+                        .setFollowRedirects(true)
+                        .build();
                 connection.connect();
 
                 int lengthOfFile = connection.getContentLength();
@@ -272,13 +275,6 @@ public class AttachmentDownloader {
                     connection.disconnect();
                 }
             }
-        }
-
-        private URLConnection createConnection(URL url) throws IOException {
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.addRequestProperty("User-Agent", Constants.SDK_USER_AGENT);
-            connection.setInstanceFollowRedirects(true);
-            return connection;
         }
     }
 }

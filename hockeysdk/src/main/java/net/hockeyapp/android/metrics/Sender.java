@@ -7,6 +7,7 @@ import android.os.Build;
 import android.text.TextUtils;
 import net.hockeyapp.android.utils.AsyncTaskUtils;
 import net.hockeyapp.android.utils.HockeyLog;
+import net.hockeyapp.android.utils.HttpURLConnectionBuilder;
 
 import java.io.*;
 import java.lang.ref.WeakReference;
@@ -32,13 +33,9 @@ public class Sender {
      */
     static final String DEFAULT_ENDPOINT_URL = "https://gate.hockeyapp.net/v2/track";
     /**
-     * Read timeout for transmission.
+     * Timeout for transmission.
      */
-    static final int DEFAULT_SENDER_READ_TIMEOUT = 10 * 1000;
-    /**
-     * Connect timeout for transmission.
-     */
-    static final int DEFAULT_SENDER_CONNECT_TIMEOUT = 15 * 1000;
+    static final int DEFAULT_SENDER_TIMEOUT = 15 * 1000;
     /**
      * The max number of requests to perform in parallel.
      */
@@ -210,33 +207,20 @@ public class Sender {
      */
     @SuppressWarnings("ConstantConditions")
     protected HttpURLConnection createConnection() {
-        URL url;
-        HttpURLConnection connection = null;
         try {
-            if (getCustomServerURL() == null) {
-                url = new URL(DEFAULT_ENDPOINT_URL);
-            } else {
-                url = new URL(this.mCustomServerURL);
-                // TODO The constructor of URL() will never return null but rather throw a MalformedURLException
-                // TODO this being caught below, makes this code redundant.
-                if (url == null) {
-                    url = new URL(DEFAULT_ENDPOINT_URL);
-                }
+            String url = getCustomServerURL();
+            if (url == null) {
+                url = DEFAULT_ENDPOINT_URL;
             }
-
-            // TODO Replace with HttpUrlConnectionBuilder calls - expand this if necessary.
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setReadTimeout(DEFAULT_SENDER_READ_TIMEOUT);
-            connection.setConnectTimeout(DEFAULT_SENDER_CONNECT_TIMEOUT);
-            connection.setRequestMethod("POST");
-            connection.setRequestProperty("Content-Type", "application/x-json-stream");
-            connection.setDoOutput(true);
-            connection.setDoInput(true);
-            connection.setUseCaches(false);
+            HttpURLConnectionBuilder builder = new HttpURLConnectionBuilder(url);
+            builder.setTimeout(DEFAULT_SENDER_TIMEOUT);
+            builder.setRequestMethod("POST");
+            builder.setHeader("Content-Type", "application/x-json-stream");
+            return builder.build();
         } catch (IOException e) {
             HockeyLog.error(TAG, "Could not open connection for provided URL with exception: ", e);
+            return null;
         }
-        return connection;
     }
 
     /**
